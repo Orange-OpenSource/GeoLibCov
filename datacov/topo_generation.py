@@ -35,27 +35,33 @@ class TopoGen:
         self.bs_dist_loc = bs_dist_loc
         self.bs_dist_scale = bs_dist_scale
         self.bs_height = bs_height
-        self.ue_dist_loc = ue_dist_loc
         self.azimut_scale = azimut_scale
         self.n_azimuts = n_azimuts
         self.n_ue = n_ue
-        self.ue_dist_scale = ue_dist_scale
         self.bands = bands
-        self.band_probs = band_probs
+        self.ue_dist_scale = self.to_band_dict(ue_dist_scale)
+        self.ue_dist_loc = self.to_band_dict(ue_dist_loc)
+        self.band_probs = self.to_band_dict(band_probs)
         
         self.sites = None
+        self.azimuts = None
         self.cells = None
         self.ues = None
         
+    def to_band_dict(self, values):
+        d = {}
+        for b, v in zip(self.bands, values):
+            d[b] = v
+        return d
+        
     def generate_topo(self):
         self.sites = self.generate_bs()
-        azimuts = self.generate_azimuts(self.n_sites, self.azimut_scale, self.n_azimuts)
-        df_az_geometry = self.create_az_lines(azimuts)
-        df_cells = self.generate_cells(df_az_geometry)
-        gdf_ue = self.generate_ue_positions(df_az_geometry, df_cells)
-        self.cells = df_cells
+        self.azimuts = self.generate_azimuts(self.n_sites, self.azimut_scale, self.n_azimuts)
+        df_az_geometry = self.create_az_lines()
+        self.cells = self.generate_cells(df_az_geometry)
+        gdf_ue = self.generate_ue_positions(df_az_geometry)
         self.ues = gdf_ue
-        return df_cells, gdf_ue
+        return self.cells, gdf_ue
 
     def generate_bs(self):
         x_bs = np.random.normal(loc=self.bs_dist_loc, scale=self.bs_dist_scale, size=self.n_sites)
@@ -79,7 +85,8 @@ class TopoGen:
         y_bs = self.sites.y
 
         df_cells = []
-        for b, p in zip(self.bands, self.band_probs):
+        for b in self.bands:
+            p = self.band_probs[b]
             df_cells.append(pd.DataFrame({'bs_id': bs_ids, 
                                 'x': x_bs, 'y': y_bs, 
                                 'band': b * np.random.binomial(1, p, self.n_sites)}))
@@ -116,8 +123,9 @@ class TopoGen:
             site_color[bs_id] = mpl.colormaps[colormaps[i % 6]].resampled(360)
         
         fig, ax = plt.subplots(figsize=(10, 10))
-        ax.set_xlim([self.minlim - 0.2, self.maxlim + 0.2])
-        ax.set_ylim([self.minlim - 0.2, self.maxlim + 0.2])
+        max_loc = np.array(list(self.ue_dist_loc.values())).max()
+        ax.set_xlim([self.minlim - max_loc, self.maxlim + max_loc])
+        ax.set_ylim([self.minlim - max_loc, self.maxlim + max_loc])
         
         if frequency is not None:
             frequencies_to_plot = [frequency]
@@ -157,8 +165,8 @@ class TopoGen:
             plt.legend(handles=legend_marker)
         plt.show()
 
-    def generate_ue_positions(self, azimuts_geometry, df_cells):
-        df_cells = azimuts_geometry[['bs_id', 'band', 'x_ue_loc', 'y_ue_loc', 'ue_scale']].merge(df_cells, on=['bs_id', 'band'])
+    def generate_ue_positions(self, azimuts_geometry):
+        df_cells = azimuts_geometry[['bs_id', 'band', 'azimut', 'x_ue_loc', 'y_ue_loc', 'ue_scale']].merge(self.cells, on=['bs_id', 'band', 'azimut'])
         cid = df_cells.cell_id
         x_ue_loc = df_cells.x_ue_loc
         y_ue_loc = df_cells.y_ue_loc
@@ -176,23 +184,40 @@ class TopoGen:
             ue_geometries.append(pts)
         gdf_ue = pd.DataFrame(gdf_ue)
         gdf_ue = gpd.GeoDataFrame(gdf_ue, geometry=ue_geometries)
+        assert gdf_ue.shape[0] == self.cells.shape[0]
         return gdf_ue
         
-        
-    def create_az_lines(self, azimuts):
+    def create_az_lines(self, azimuts=None, ue_dist_loc=None, use_cid=False):
+        """creates geometry lines in the direction of azimuts.
+
+        Args:
+            azimuts (array, optional): (n_sites, n_azimuts). Defaults to None.
+            ue_dist_loc (dict, optional): keys are frequency band, values are the length of the lines. Defaults to None.
+
+        Returns:
+            GeoDataFrame: geodataframe with geometry of azimut
+        """
         bs_ids = self.sites.bs_id
         x_bs = self.sites.x
         y_bs = self.sites.y
+        
+        if azimuts is None:
+            azimuts = self.azimuts
+        
+        if ue_dist_loc is None:
+            ue_dist_loc = self.ue_dist_loc
         
         rad_azimuts = np.deg2rad(azimuts)
 
         df_azimuts = []
         geometries = []
-        for ue_d, ue_s, b in zip(self.ue_dist_loc, self.ue_dist_scale, self.bands):
+        for b in self.bands:
+            ue_loc = ue_dist_loc[b]
+            ue_s = self.ue_dist_scale[b]
             for bs, x, y, rad_az_site, az_site in zip(bs_ids, x_bs, y_bs, rad_azimuts, azimuts):
                 for az_id, (rad_az, az) in enumerate(zip(rad_az_site, az_site)):
-                    x_az_end = x + ue_d * np.cos(rad_az)
-                    y_az_end = y + ue_d * np.sin(rad_az)
+                    x_az_end = x + ue_loc * np.cos(rad_az)
+                    y_az_end = y + ue_loc * np.sin(rad_az)
                     wkt_line = f'LINESTRING({x} {y}, {x_az_end} {y_az_end})'
                     
                     df_azimuts.append({
@@ -206,6 +231,12 @@ class TopoGen:
                     geometries.append(wkt_line)
         df_azimuts = pd.DataFrame(df_azimuts)
         df_azimuts = gpd.GeoDataFrame(df_azimuts, geometry=gpd.GeoSeries.from_wkt(geometries))
+        
+        if self.cells is not None:
+            if use_cid:
+                df_azimuts = df_azimuts.merge(self.cells[['cell_id', 'bs_id', 'band', 'azimut']].drop_duplicates(), on=['bs_id', 'band', 'azimut'])
+            else:
+                df_azimuts = df_azimuts.merge(self.cells[['bs_id', 'band']].drop_duplicates(), on=['bs_id', 'band'])
         return df_azimuts
 
     def generate_azimuts(self, n_sites, azimut_scale, n_azimuts):

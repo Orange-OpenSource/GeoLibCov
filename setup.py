@@ -22,5 +22,6 @@ setup(
         'matplotlib',
         'folium',
         'mapclassify',
+        'tqdm',
     ]
 )
