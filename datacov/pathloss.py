@@ -106,12 +106,13 @@ class IDFMAPL(MAPL):
         return df
 
 class GenMAPL(MAPL):
-    def __init__(self, df, n_prb):
+    def __init__(self, df, n_prb, context_array):
+        self.context_array = context_array
         super().__init__(df, n_prb)
         
+        
     def set_context(self):
-        context = ['urban', 'suburban', 'rural']
-        self.data['context'] = choices(context, k=self.data.shape[0], weights=[0.4, 0.4, 0.2])
+        self.data['context'] = self.context_array
         
     def format_topo(self, topo_cells):
         df = topo_cells.copy()

@@ -67,12 +67,12 @@ def retrieve_scale_factors(r_l_model, coverage):
     df_scale['scale_factor'] = df_scale['r_l'] / df_scale['model_radius']
     return list(df_scale['scale_factor'])
 
-def evaluate_mapl_models(n_prb_range, mapl_model, topo_mapl, rev_model, coverage_shape):
+def evaluate_mapl_models(n_prb_range, mapl_model, topo_mapl, mapl_context, rev_model, coverage_shape):
     p = np.zeros((len(n_prb_range), len(coverage_shape.topo.bands)))
     r = np.zeros((len(n_prb_range), len(coverage_shape.topo.bands)))
     
     for i, n_prb in enumerate(tqdm(n_prb_range)):
-        mapl = mapl_model(topo_mapl, n_prb=n_prb)
+        mapl = mapl_model(topo_mapl, n_prb=n_prb, context_array=mapl_context)
         radius_model = rev_model(mapl)
         rescale_factors = retrieve_scale_factors(radius_model, coverage_shape)
         scaled_shapes = Geom().scale_cell_shapes(coverage_shape, rescale_factors)
