@@ -23,5 +23,8 @@ setup(
         'folium',
         'mapclassify',
         'tqdm',
+        'ipykernel',
+        'shapely',
+        'scipy',
     ]
 )
