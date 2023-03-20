@@ -8,7 +8,7 @@
 #
 # Author: Danny Qiu <danny.qiu@orange.com>
 
-from setuptools import setup, find_packages
+from setuptools import setup
 
 setup(
     name='DataCov',
@@ -26,15 +26,15 @@ setup(
         'datacov',
     ],
     install_requires=[
-        'numpy', 
-        'geopandas',
-        'pandas',
-        'matplotlib',
         'folium',
-        'mapclassify',
-        'tqdm',
+        'geopandas',
         'ipykernel',
-        'shapely',
+        'mapclassify',
+        'matplotlib',
+        'numpy', 
+        'pandas',
         'scipy',
+        'shapely',
+        'tqdm',
     ]
 )

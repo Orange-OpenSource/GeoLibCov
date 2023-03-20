@@ -67,15 +67,10 @@ def evaluate(coverage, scales=np.arange(0.3, 2.1, 0.1), pr_func=get_pr_band):
     r = np.zeros((len(scales), len(coverage.topo.bands)))
 
     for j, s in enumerate(tqdm(scales)):
-        v_scaled = Geom().scale_cell_shapes(coverage, sfact=s)
+        v_scaled = Geom.scale_cell_shapes(coverage, s)
     
         p[j], r[j] = pr_func(v_scaled)
     return p.T, r.T
-
-def retrieve_scale_factors(r_l_model, coverage):
-    df_scale = r_l_model.data.merge(coverage.radius_scale, on='cell_id')
-    df_scale['scale_factor'] = df_scale['r_l'] / df_scale['model_radius']
-    return list(df_scale['scale_factor'])
 
 def evaluate_mapl_models(n_prb_range, mapl_model, topo_mapl, mapl_context, rev_model, coverage_shape):
     p = np.zeros((len(n_prb_range), len(coverage_shape.topo.bands)))
@@ -84,8 +79,8 @@ def evaluate_mapl_models(n_prb_range, mapl_model, topo_mapl, mapl_context, rev_m
     for i, n_prb in enumerate(tqdm(n_prb_range)):
         mapl = mapl_model(topo_mapl, n_prb=n_prb, context_array=mapl_context)
         radius_model = rev_model(mapl)
-        rescale_factors = retrieve_scale_factors(radius_model, coverage_shape)
-        scaled_shapes = Geom().scale_cell_shapes(coverage_shape, rescale_factors)
+        #rescale_factors = coverage_shape.retrieve_scale_factors(radius_model)
+        scaled_shapes = Geom.scale_cell_shapes(coverage_shape, radius_model=radius_model)
         p[i], r[i] = get_pr_band(scaled_shapes)
     return p.T, r.T
 
@@ -93,7 +88,7 @@ def tune_scale(dist_gen, coverage, scales=np.arange(0.1, 2.1, 0.1)):
     errors = []
     bands = coverage.cell_shapes.band.unique()
     for s in scales:
-        scaled_cov = Geom().scale_cell_shapes(coverage, s)
+        scaled_cov = Geom.scale_cell_shapes(coverage, s)
         cmp = dist_gen.distances.merge(scaled_cov.radius_scale, on=['cell_id', 'band'])
         cmp['ae'] = np.abs(cmp['proxy_radius'] - cmp['model_radius'])
         mae = dict(cmp.groupby('band').ae.mean())
