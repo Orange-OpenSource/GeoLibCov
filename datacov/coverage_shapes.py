@@ -1,3 +1,13 @@
+# Software Name: DataCov
+# Version: 0.1.0
+# SPDX-FileCopyrightText: Copyright (c) 2023 Orange
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# This software is distributed under the BSD 3-Clause "New" or "Revised" License,
+# see the "LICENSE.txt" file for more details.
+#
+# Author: Danny Qiu <danny.qiu@orange.com>
+
 from shapely import MultiPoint, Polygon
 from shapely import voronoi_polygons
 from shapely.ops import linemerge, unary_union, polygonize
@@ -24,7 +34,21 @@ class Geom:
     def _init_topo_attr(self, topo):
         self.topo = topo
         self.sites = self.topo.sites.copy()
-        self.cells = self.topo.cells.copy()      
+        self.cells = self.topo.cells.copy()
+        
+    def compute_scale(self, geom1, geom2):
+        """get scale factor of geom2.model_radius / geom1.model_radius
+
+        Args:
+            geom1 (Geom): _description_
+            geom2 (Geom): _description_
+
+        Returns:
+            Series: scale factor for each cell
+        """
+        compare = geom1.radius_scale.merge(geom2.radius_scale[['cell_id', 'model_radius']], on='cell_id', suffixes=['_geom1', '_geom2'])
+        scale_factors = compare['model_radius_geom2'] / compare['model_radius_geom1']
+        return scale_factors
         
     def plot(self, band=None, **kwargs):
         if band is None:
@@ -33,17 +57,19 @@ class Geom:
             self.cell_shapes[self.cell_shapes.band == band].plot(**kwargs)
             
     def set_shape_radius_scale(self):
-        """sets an approximation of the radius of the bounding circle of the polygons. Approximation is the largest side of the bounding box / 2
+        """sets an approximation of the radius of the bounding circle of site_shapes. Approximation is the largest side of the bounding box / 2
         
         Returns:
             _type_: _description_
         """
-        b = self.cell_shapes.geometry.bounds
+        b = self.site_shapes.geometry.bounds
         bx_len = b.maxx - b.minx
         by_len = b.maxy - b.miny
         approx_radius = np.max(np.array([bx_len, by_len]).T, axis=1) / 2
-        radius_scale = pd.DataFrame({'cell_id': self.cell_shapes.cell_id, 'model_radius': approx_radius})
+        radius_scale = pd.DataFrame({'bs_id': self.site_shapes.bs_id, 'band': self.site_shapes.band, 'model_radius': approx_radius})
+        radius_scale = radius_scale.merge(self.cell_shapes, on=['bs_id', 'band'])
         self.radius_scale = radius_scale
+        assert self.cell_shapes.shape[0] == self.radius_scale.shape[0]
         return radius_scale
         
         
@@ -99,14 +125,25 @@ class Geom:
         else:
             sfact = [sfact] * coverage.cell_shapes.shape[0]
         
-        s = []
+        scaled_geom = []
         cell_shapes = coverage.cell_shapes.copy()
         for i, r in enumerate(cell_shapes.iterrows()):
             values = r[1]
-            s.append(scale(values.geometry, xfact=sfact[i], yfact=sfact[i], origin=(values.x, values.y)))
-        cell_shapes['geometry'] = s
-        self.cell_shapes = cell_shapes
+            scaled_geom.append(scale(values.geometry, xfact=sfact[i], yfact=sfact[i], origin=(values.x, values.y)))
+        cell_shapes['geometry'] = scaled_geom
+        cell_shapes['scale'] = sfact
+        self.cell_shapes = cell_shapes.copy().drop('scale', axis=1)
         
+        sfact_site = cell_shapes.groupby(['bs_id', 'band']).scale.mean().reset_index()
+        site_shapes = coverage.site_shapes.copy()
+        site_shapes = site_shapes.merge(sfact_site, on=['bs_id', 'band'])
+        
+        for r in site_shapes.iterrows():
+            values = r[1]
+            scaled_geom.append(scale(values.geometry, xfact=values.scale, yfact=values.scale, origin=(values.x, values.y)))
+        
+        assert site_shapes.shape[0] == coverage.site_shapes.shape[0]
+        self.site_shapes = site_shapes.drop('scale', axis=1)
         self.set_shape_radius_scale()
         return self
         

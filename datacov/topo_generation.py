@@ -1,3 +1,13 @@
+# Software Name: DataCov
+# Version: 0.1.0
+# SPDX-FileCopyrightText: Copyright (c) 2023 Orange
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# This software is distributed under the BSD 3-Clause "New" or "Revised" License,
+# see the "LICENSE.txt" file for more details.
+#
+# Author: Danny Qiu <danny.qiu@orange.com>
+
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl

@@ -1,3 +1,13 @@
+# Software Name: DataCov
+# Version: 0.1.0
+# SPDX-FileCopyrightText: Copyright (c) 2023 Orange
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# This software is distributed under the BSD 3-Clause "New" or "Revised" License,
+# see the "LICENSE.txt" file for more details.
+#
+# Author: Danny Qiu <danny.qiu@orange.com>
+
 import geopandas as gpd
 import pandas as pd
 import numpy as np
@@ -84,7 +94,7 @@ def tune_scale(dist_gen, coverage, scales=np.arange(0.1, 2.1, 0.1)):
     bands = coverage.cell_shapes.band.unique()
     for s in scales:
         scaled_cov = Geom().scale_cell_shapes(coverage, s)
-        cmp = dist_gen.distances.merge(scaled_cov.radius_scale, on='cell_id')
+        cmp = dist_gen.distances.merge(scaled_cov.radius_scale, on=['cell_id', 'band'])
         cmp['ae'] = np.abs(cmp['proxy_radius'] - cmp['model_radius'])
         mae = dict(cmp.groupby('band').ae.mean())
         mae['scale'] = s

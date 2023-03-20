@@ -1,0 +1,98 @@
+folium
+======
+
+Copyright (c) 2013, Rob Story.
+
+Folium is distributed under the terms of MIT License (https://github.com/python-visualization/folium/blob/main/LICENSE.txt)
+
+----
+
+geopandas
+==========
+
+Copyright (c) 2013-2022, GeoPandas developers.
+
+Geopandas is distributed under the terms of BSD 3-Clause "New" or "Revised" License (https://github.com/geopandas/geopandas/blob/main/LICENSE.txt)
+
+----
+
+ipykernel
+=========
+
+Copyright (c) 2015, IPython Development Team.
+
+Ipykernel is distributed under the terms of BSD 3-Clause "New" or "Revised" License (https://github.com/ipython/ipykernel/blob/main/LICENSE)
+
+----
+
+mapclassify
+===========
+
+Copyright (c) 2018, PySAL-mapclassify Developers.
+
+Mapclassify is distributed under the terms of BSD 3-Clause "New" or "Revised" License (https://github.com/pysal/mapclassify/blob/main/LICENSE.txt)
+
+----
+
+matplotlib
+==========
+
+Copyright (c) 2012-, Matplotlib Development Team.
+
+Matplotlib is distributed under the terms of the license available at (https://github.com/matplotlib/matplotlib/blob/main/LICENSE/LICENSE)
+
+----
+
+numpy
+=====
+
+Copyright (c) 2005-2023, NumPy Developers.
+
+Numpy is distributed under the terms of BSD 3-Clause "New" or "Revised" License (https://github.com/numpy/numpy/blob/main/LICENSE.txt)
+
+----
+
+pandas
+======
+
+Copyright (c) 2008-2011, AQR Capital Management, LLC, Lambda Foundry, Inc. and PyData Development Team.
+
+Pandas is distributed under the terms of BSD 3-Clause "New" or "Revised" License (https://github.com/pandas-dev/pandas/blob/main/LICENSE)
+
+----
+
+scipy
+=====
+
+Copyright (c) 2001-2002 Enthought, Inc. 2003-2023, SciPy Developers.
+
+Scipy is distributed under the terms of BSD 3-Clause "New" or "Revised" License (https://github.com/scipy/scipy/blob/main/LICENSE.txt)
+
+----
+
+setuptools
+==========
+
+Copyright (c) Jason R. Coombs
+
+Setuptools is distributed under the terms of MIT License (https://github.com/pypa/setuptools/blob/main/LICENSE)
+
+----
+
+shapely
+=======
+
+Copyright (c) 2007, Sean C. Gillies. 2019, Casper van der Wel. 2007-2022, Shapely Contributors.
+
+shapely is distributed under the terms of BSD 3-Clause "New" or "Revised" License (https://github.com/shapely/shapely/blob/main/LICENSE.txt)
+
+----
+
+tqdm
+====
+
+Copyright (c) 2015-2023 Casper da Costa-Luis. 2013 noamraph
+
+tqdm is distributed under the terms of the license available at (https://github.com/tqdm/tqdm/blob/master/LICENCE)
+
+----
