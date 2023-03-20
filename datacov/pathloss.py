@@ -8,6 +8,8 @@
 #
 # Author: Danny Qiu <danny.qiu@orange.com>
 
+from abc import ABC, abstractmethod
+from typing_extensions import override
 import numpy as np
 from scipy.stats import norm
 from scipy.special import lambertw
@@ -133,9 +135,15 @@ class GenMAPL(MAPL):
         }
         df = df.rename(columns=aliases)
         return df
+
+
+class AbstractRev(ABC):
+    @abstractmethod
+    def set_r_l(self):
+        pass
+
         
-        
-class RevHata:
+class RevHata(AbstractRev):
     def __init__(self, mapl):
         self.mapl = mapl
         self.data = self.mapl.data.copy()
@@ -143,6 +151,7 @@ class RevHata:
         self.ahm = self.data.ahm
         self.r_l = self.data.r_l
     
+    @override
     def set_r_l(self):
         self.data['ahm'] = 0.
         self.data['r_l'] = 0.
@@ -162,7 +171,7 @@ class RevHata:
             self.data.loc[self.data['context'] == context, 'ahm'] = ahm
             self.data.loc[self.data['context'] == context, 'r_l'] = 10**lgdist * 1e3
     
-class RevUMa:
+class RevUMa(AbstractRev):
     def __init__(self, mapl):
         self.c = 3e8
         self.h_e = 1
@@ -245,6 +254,7 @@ class RevUMa:
             self.data['dist_nlos'] = d1
             self.data.loc[self.data['dist_nlos_prime'] > 5000, 'dist_nlos'] = d2
         
+    @override
     def set_r_l(self):
         if self.use_opt is True:
             self.data['r_l'] = self.data['dist_los']
@@ -261,7 +271,7 @@ class RevUMa:
 
     # what we want is actually line of sight scenario
     
-class RevRMa:
+class RevRMa(AbstractRev):
     def __init__(self, mapl):
         self.c = 3e8
         self.h_e = 1
@@ -342,19 +352,21 @@ class RevRMa:
         d_2d = self.get_d_2d(d_3d)
         self.data['dist_nlos_prime'] = d_2d
         
+    @override
     def set_r_l(self):
         self.data['r_l'] = self.data['dist_los']
         dist_prime = self.data.loc[self.data['context'].isin(['urban', 'suburban']), 'dist_nlos_prime']
         self.data.loc[self.data['context'].isin(['urban', 'suburban']), 'r_l'] = dist_prime
         
 
-class RevMa:
+class RevMa(AbstractRev):
     def __init__(self, mapl):
         self.uma = RevUMa(mapl)
         self.rma = RevRMa(mapl)
         self.data = mapl.data.copy()
         self.set_r_l()
-        
+
+    @override
     def set_r_l(self):
         self.data['r_l'] = self.rma.data['dist_los']
         d = self.uma.data.loc[self.data['context'].isin(['urban', 'suburban']), 'dist_nlos']

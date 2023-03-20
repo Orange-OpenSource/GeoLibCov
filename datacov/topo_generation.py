@@ -57,6 +57,7 @@ class TopoGen:
         self.azimuts = None
         self.cells = None
         self.ues = None
+        self.site_color = None
         
     def to_band_dict(self, values):
         d = {}
@@ -69,9 +70,9 @@ class TopoGen:
         self.azimuts = self.generate_azimuts(self.n_sites, self.azimut_scale, self.n_azimuts)
         df_az_geometry = self.create_az_lines()
         self.cells = self.generate_cells(df_az_geometry)
-        gdf_ue = self.generate_ue_positions(df_az_geometry)
-        self.ues = gdf_ue
-        return self.cells, gdf_ue
+        self.ues = self.generate_ue_positions(df_az_geometry)
+        self.set_bs_colors()
+        return self.cells, self.ues
 
     def generate_bs(self):
         x_bs = np.random.normal(loc=self.bs_dist_loc, scale=self.bs_dist_scale, size=self.n_sites)
@@ -111,15 +112,6 @@ class TopoGen:
     def plot_topography(self, frequency=None):
         x_bs = self.sites.x
         y_bs = self.sites.y
-
-        colormaps = [
-            'Greys', 
-            'Purples', 
-            'Blues', 
-            'Greens', 
-            'Oranges', 
-            'Reds'
-        ]
         
         band_marker = {}
         legend_marker = []
@@ -127,11 +119,7 @@ class TopoGen:
         for i, b in enumerate(self.bands):
             band_marker[b] = markers[i]
             legend_marker.append(mlines.Line2D([], [], color='grey', marker=markers[i], markersize=15, label=f'LTE{b}', linestyle='None'))
-        
-        site_color = {}
-        for i, bs_id in enumerate(self.sites.bs_id.unique()):
-            site_color[bs_id] = mpl.colormaps[colormaps[i % 6]].resampled(360)
-        
+
         fig, ax = plt.subplots(figsize=(10, 10))
         max_loc = np.array(list(self.ue_dist_loc.values())).max()
         ax.set_xlim([self.minlim - max_loc, self.maxlim + max_loc])
@@ -143,14 +131,11 @@ class TopoGen:
             frequencies_to_plot = self.bands
             
         site_cells = self.cells.copy()
-        az_min = 0
-        az_max = 359
-        az_std = (site_cells['azimut'] - az_min) / (az_max - az_min)
-        az_scaled = az_std * (0.9 - 0.1) + 0.1
+        az_scaled = self.rescale_azimut(site_cells['azimut'])
         site_cells['azimut_color'] = az_scaled
             
         for i, bs_id in enumerate(self.sites.bs_id):
-            c = site_color[bs_id]
+            c = self.site_color[bs_id]
             ax.scatter(x_bs[i], y_bs[i], marker='1', color=c(0.5))
             
             for b in frequencies_to_plot:
@@ -174,6 +159,29 @@ class TopoGen:
                     
             plt.legend(handles=legend_marker)
         plt.show()
+
+    def rescale_azimut(self, azimuts):
+        minlim = 0.15
+        maxlim = 0.95
+        az_min = 0
+        az_max = 359
+        az_std = (azimuts - az_min) / (az_max - az_min)
+        az_scaled = az_std * (maxlim - minlim) + minlim
+        return az_scaled
+
+    def set_bs_colors(self):
+        colormaps = [
+            'Blues', 
+            'Oranges',
+            'Greens', 
+            'Reds',
+            'Greys',
+            'Purples', 
+        ]
+        
+        self.site_color = {}
+        for i, bs_id in enumerate(self.sites.bs_id.unique()):
+            self.site_color[bs_id] = mpl.colormaps[colormaps[i % 6]].resampled(360)
 
     def generate_ue_positions(self, azimuts_geometry):
         df_cells = azimuts_geometry[['bs_id', 'band', 'azimut', 'x_ue_loc', 'y_ue_loc', 'ue_scale']].merge(self.cells, on=['bs_id', 'band', 'azimut'])

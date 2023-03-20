@@ -8,8 +8,13 @@
 #
 # Author: Danny Qiu <danny.qiu@orange.com>
 
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from functools import singledispatchmethod
+from typing import overload
+from typing_extensions import override
 from shapely import MultiPoint, Polygon
-from shapely import voronoi_polygons
+from shapely import voronoi_polygons, minimum_bounding_radius
 from shapely.ops import linemerge, unary_union, polygonize
 import geopandas as gpd
 import pandas as pd
@@ -18,25 +23,44 @@ from datacov import TopoGen
 from shapely import concave_hull
 from shapely.affinity import scale
 
-class Geom:
-    def __init__(self, topo=None) -> None:
-        self.topo = None
-        self.sites = None
-        self.cells = None
-        
-        if topo is not None:
-            self._init_topo_attr(topo)
-        
-        self.site_shapes = None
-        self.cell_shapes = None
-        self.radius_scale = None 
+@dataclass
+class Geom(ABC):
+    topo: TopoGen
+    site_shapes: pd.DataFrame
+    cell_shapes: pd.DataFrame
+    radius_scale: pd.DataFrame
 
-    def _init_topo_attr(self, topo):
-        self.topo = topo
-        self.sites = self.topo.sites.copy()
-        self.cells = self.topo.cells.copy()
+    @classmethod
+    def from_topo(cls, topo: TopoGen):
+        site_shapes = cls._create_site_shapes(topo)
+        cell_shapes = cls._create_cell_shapes(topo, site_shapes)
+        radius_scale = cls._shape_radius_scale(site_shapes, cell_shapes)
         
-    def compute_scale(self, geom1, geom2):
+        return cls(
+            topo, 
+            site_shapes,
+            cell_shapes, 
+            radius_scale,
+        )
+
+    def copy(self):
+        return self.__class__(
+            self.topo,
+            self.site_shapes.copy(),
+            self.cell_shapes.copy(),
+            self.radius_scale.copy(),
+        )
+    
+    @property
+    def sites(self):
+        return self.topo.sites
+    
+    @property
+    def cells(self):
+        return self.topo.cells
+        
+    @staticmethod
+    def compute_scale(geom1, geom2):
         """get scale factor of geom2.model_radius / geom1.model_radius
 
         Args:
@@ -56,51 +80,35 @@ class Geom:
         else:
             self.cell_shapes[self.cell_shapes.band == band].plot(**kwargs)
             
-    def set_shape_radius_scale(self):
+    @staticmethod
+    def _shape_radius_scale(site_shapes, cell_shapes):
         """sets an approximation of the radius of the bounding circle of site_shapes. Approximation is the largest side of the bounding box / 2
         
         Returns:
             _type_: _description_
         """
-        b = self.site_shapes.geometry.bounds
-        bx_len = b.maxx - b.minx
-        by_len = b.maxy - b.miny
-        approx_radius = np.max(np.array([bx_len, by_len]).T, axis=1) / 2
-        radius_scale = pd.DataFrame({'bs_id': self.site_shapes.bs_id, 'band': self.site_shapes.band, 'model_radius': approx_radius})
-        radius_scale = radius_scale.merge(self.cell_shapes, on=['bs_id', 'band'])
-        self.radius_scale = radius_scale
-        assert self.cell_shapes.shape[0] == self.radius_scale.shape[0]
+        radius = site_shapes.geometry.apply(minimum_bounding_radius)
+        #bx_len = b.maxx - b.minx
+        #by_len = b.maxy - b.miny
+        #approx_radius = np.max(np.array([bx_len, by_len]).T, axis=1) / 2
+        radius_scale = pd.DataFrame({'bs_id': site_shapes.bs_id, 'band': site_shapes.band, 'model_radius': radius})
+        radius_scale = radius_scale.merge(cell_shapes, on=['bs_id', 'band'])
+        assert cell_shapes.shape[0] == radius_scale.shape[0]
         return radius_scale
-        
-        
-    def create_shapes(self, topo=None):
-        """Initialization method.
-
-        Args:
-            topo (TopoGen, optional): generated topography object. Defaults to None.
-
-        Raises:
-            RuntimeError: if topo has not been specified at constructor call, it must be specified when calling this method.
-
-        Returns:
-            self: returns itself
-        """
-        if (self.topo is None) and (topo is None):
-            raise RuntimeError(f'topo must be specified at instanciation or in this call.')
-        
-        if self.topo is None:
-            self._init_topo_attr(topo)
-            
-        self.site_shapes = self.create_site_shapes()
-        self.cell_shapes = self.create_cell_shapes()
-        
-        self.set_shape_radius_scale()
-        return self
-        
-    def create_site_shapes(self):
-        raise NotImplementedError('Method has not been overriden.')
-        
-    def scale_cell_shapes(self, coverage, sfact=1.1):
+    
+    @classmethod
+    @abstractmethod
+    def _create_site_shapes(cls, topo):
+        pass
+    
+    @staticmethod
+    def retrieve_scale_factors(r_l_model, radius_scale):
+        df_scale = r_l_model.data.merge(radius_scale, on='cell_id')
+        df_scale['scale_factor'] = df_scale['r_l'] / df_scale['model_radius']
+        return list(df_scale['scale_factor'])
+    
+    @classmethod
+    def scale_cell_shapes(cls, coverage, sfact=1.1, radius_model=None):
         """Initialization method
 
         Args:
@@ -113,17 +121,15 @@ class Geom:
         Returns:
             self: returns itself
         """
-        if (self.topo is None) and (coverage.topo is None):
-            raise RuntimeError(f'Cannot set topo because topo of coverage is None.')
-        
-        if self.topo is None:
-            self._init_topo_attr(coverage.topo)
-            
-        if isinstance(sfact, list):
+        if radius_model is not None:
+            sfact = cls.retrieve_scale_factors(radius_model, coverage.radius_scale)
+        elif isinstance(sfact, list):
             if len(sfact) != coverage.cell_shapes.shape[0]:
                 raise AssertionError(f'List of factors with length {len(sfact)} does not match length {coverage.cell_shapes.shape[0]} of coverage.cell_shapes.')
         else:
             sfact = [sfact] * coverage.cell_shapes.shape[0]
+
+        self = coverage.copy()
         
         scaled_geom = []
         cell_shapes = coverage.cell_shapes.copy()
@@ -138,52 +144,56 @@ class Geom:
         site_shapes = coverage.site_shapes.copy()
         site_shapes = site_shapes.merge(sfact_site, on=['bs_id', 'band'])
         
+        scaled_site_geom = []
         for r in site_shapes.iterrows():
             values = r[1]
-            scaled_geom.append(scale(values.geometry, xfact=values.scale, yfact=values.scale, origin=(values.x, values.y)))
+            scaled_site_geom.append(scale(values.geometry, xfact=values.scale, yfact=values.scale, origin=(values.x, values.y)))
         
         assert site_shapes.shape[0] == coverage.site_shapes.shape[0]
         self.site_shapes = site_shapes.drop('scale', axis=1)
-        self.set_shape_radius_scale()
+        self.site_shapes.loc[:, 'geometry'] = gpd.GeoSeries(scaled_site_geom)
+        self.radius_scale = cls._shape_radius_scale(self.site_shapes, self.cell_shapes)
         return self
         
-    def create_cell_shapes(self):       
-        az_start = self.topo.azimuts.reshape((self.topo.n_sites, self.topo.n_azimuts))
+    @staticmethod
+    def _create_cell_shapes(topo, site_shapes):       
+        az_start = topo.azimuts.reshape((topo.n_sites, topo.n_azimuts))
         az_end = np.hstack([az_start[:, 1:], (az_start[:, 0] + 360).reshape((-1, 1))])
         sector_azimuts = ((az_start + az_end) / 2)%360
 
-        cut_length = (self.topo.maxlim - self.topo.minlim) * 2
-        sector_geometries = self.topo.create_az_lines(sector_azimuts, {700: cut_length, 800: cut_length, 1800: cut_length, 2100: cut_length, 2600: cut_length})
-        sector_geometries = sector_geometries.merge(self.site_shapes[['bs_id', 'band']], on=['bs_id', 'band'])[['bs_id', 'band', 'geometry']]
+        cut_length = (topo.maxlim - topo.minlim) * 2
+        sector_geometries = topo.create_az_lines(sector_azimuts, {700: cut_length, 800: cut_length, 1800: cut_length, 2100: cut_length, 2600: cut_length})
+        sector_geometries = sector_geometries.merge(site_shapes[['bs_id', 'band']], on=['bs_id', 'band'])[['bs_id', 'band', 'geometry']]
         sector_geometries = sector_geometries.dissolve(by=['bs_id', 'band']).reset_index()
         sector_geometries = sector_geometries.sort_values(by=['bs_id', 'band'])
         
         polygons = []
         bands = []
-        for r1, r2 in zip(sector_geometries.iterrows(), self.site_shapes.iterrows()):
+        for r1, r2 in zip(sector_geometries.iterrows(), site_shapes.iterrows()):
             band = r1[1].band
             g1 = list(r1[1].geometry.geoms)
             g2 = r2[1].geometry
-            p = list(self.split_polygon(g1, g2))
+            p = list(Geom.split_polygon(g1, g2))
             polygons += p
-            bands = bands + [band] * self.topo.n_azimuts
+            bands = bands + [band] * topo.n_azimuts
         vorocells = gpd.GeoDataFrame({'band': bands}, geometry=polygons)
         
         cell_shapes = []
         sect_len = 0.001
-        section = self.topo.create_az_lines(ue_dist_loc={700: sect_len, 800: sect_len, 1800: sect_len, 2100: sect_len, 2600: sect_len}, use_cid=True)
-        for b in self.topo.bands:
+        section = topo.create_az_lines(ue_dist_loc={700: sect_len, 800: sect_len, 1800: sect_len, 2100: sect_len, 2600: sect_len}, use_cid=True)
+        for b in topo.bands:
             # TODO: may not need a loop here
             vor = vorocells[vorocells.band==b].drop('band', axis=1)
             sec = section[section.band == b]
             cell_shapes.append(vor.sjoin(sec, predicate='contains'))
             
         cell_shapes = pd.concat(cell_shapes)
-        cell_shapes = cell_shapes.merge(self.topo.sites[['bs_id', 'x', 'y']], on='bs_id')
-        assert cell_shapes.shape[0] == self.cells.shape[0], f"cell_shapes.shape[0]={cell_shapes.shape[0]} and self.cells.shape[0]={self.cells.shape[0]}"
+        cell_shapes = cell_shapes.merge(topo.sites[['bs_id', 'x', 'y']], on='bs_id')
+        assert cell_shapes.shape[0] == topo.cells.shape[0], f"cell_shapes.shape[0]={cell_shapes.shape[0]} and self.cells.shape[0]={topo.cells.shape[0]}"
         return cell_shapes[['cell_id', 'bs_id', 'x', 'y', 'band', 'az_id', 'azimut', 'geometry']].sort_values(by=['bs_id', 'band', 'az_id'])
     
-    def split_polygon(self, lines, polygon):
+    @staticmethod
+    def split_polygon(lines, polygon):
         """split polygon with lines
 
         Args:
@@ -197,13 +207,12 @@ class Geom:
     
 
 class VoroGeom(Geom):
-    def __init__(self, topo=None) -> None:
-        super().__init__(topo=topo)
-    
-    def create_site_shapes(self):
+    @override
+    @classmethod
+    def _create_site_shapes(cls, topo):
         geometries = []
-        for b in self.topo.bands:
-            site_band = self.sites.merge(self.cells[self.cells.band == b][['bs_id', 'band']], on='bs_id')
+        for b in topo.bands:
+            site_band = topo.sites.merge(topo.cells[topo.cells.band == b][['bs_id', 'band']], on='bs_id')
             site_band = site_band[['bs_id', 'x', 'y', 'height', 'band', 'geometry']].drop_duplicates()
             
             if site_band.shape[0] == 1:
@@ -217,84 +226,80 @@ class VoroGeom(Geom):
             gdf_shape = gdf_shape.drop(['index_right'], axis=1)[['bs_id', 'x', 'y', 'height', 'band', 'geometry']]
             geometries.append(gdf_shape)
         geometries = pd.concat(geometries).sort_values(by=['bs_id', 'band']).reset_index(drop=True)
-        assert self.cells[['bs_id', 'band']].drop_duplicates().shape[0] == geometries.shape[0]
+        assert topo.cells[['bs_id', 'band']].drop_duplicates().shape[0] == geometries.shape[0]
         return geometries
     
 
 class VoroSiteGeom(Geom):
-    def __init__(self, topo=None) -> None:
-        super().__init__(topo)
-        
-        self.site_shapes = None
-        self.cell_shapes = None
-        
-    def create_shapes(self, coverage):
-        if (self.topo is None) and (coverage.topo is None):
-            raise RuntimeError(f'topo must be specified at instanciation or in this call.')
-        
-        if self.topo is None:
-            self._init_topo_attr(coverage.topo)
-            
-        self.site_shapes = self.create_site_shapes(coverage)
-        self.cell_shapes = self.create_cell_shapes(coverage)
-        
-        self.set_shape_radius_scale()
+    @classmethod
+    @override
+    def from_topo(cls, topo):
+        voro_geom = VoroGeom.from_topo(topo)
+        return VoroSiteGeom.from_voro_geom(voro_geom)
+
+    @classmethod
+    def from_voro_geom(cls, voro_geom: VoroGeom):
+        self = voro_geom.copy()
+        self.cell_shapes = self.site_shapes.merge(self.cell_shapes.drop('geometry', axis=1), on=['bs_id', 'x', 'y', 'band'])
         return self
-    
-    def create_cell_shapes(self, coverage):
-        cell_shapes = coverage.site_shapes.merge(coverage.cell_shapes.drop('geometry', axis=1), on=['bs_id', 'x', 'y', 'band'])
-        assert cell_shapes.shape[0] == self.cells.shape[0]
-        return cell_shapes
-    
-    def create_site_shapes(self, coverage):
-        return coverage.site_shapes
-    
-    
+
+
 class CircleGeom(Geom):
-    def __init__(self, topo=None) -> None:
-        super().__init__(topo=topo)
-        self.shape_radius = 0.01
+    SHAPE_RADIUS = 0.01
     
-    def create_site_shapes(self):
+    @override
+    @classmethod
+    def _create_site_shapes(cls, topo):
         geometries = []
-        for b in self.topo.bands:
-            site_band = self.sites.merge(self.cells[self.cells.band == b][['bs_id', 'band']], on='bs_id')
+        for b in topo.bands:
+            site_band = topo.sites.merge(topo.cells[topo.cells.band == b][['bs_id', 'band']], on='bs_id')
             site_band = site_band[['bs_id', 'x', 'y', 'height', 'band', 'geometry']].drop_duplicates()
             
-            gs_shape = site_band.geometry.buffer(self.shape_radius)
+            gs_shape = site_band.geometry.buffer(cls.SHAPE_RADIUS)
             gdf_shape = gpd.GeoDataFrame(geometry=gs_shape)
 
             gdf_shape = gpd.sjoin(gdf_shape, site_band, predicate='contains')
             gdf_shape = gdf_shape.drop(['index_right'], axis=1)[['bs_id', 'x', 'y', 'height', 'band', 'geometry']]
             geometries.append(gdf_shape)
         geometries = pd.concat(geometries).sort_values(by=['bs_id', 'band']).reset_index(drop=True)
-        assert self.cells[['bs_id', 'band']].drop_duplicates().shape[0] == geometries.shape[0]
+        assert topo.cells[['bs_id', 'band']].drop_duplicates().shape[0] == geometries.shape[0]
         return geometries
     
 
 class EmpiricalGeom(Geom):
-    def __init__(self, topo=None) -> None:
-        self.ues = None
-        super().__init__(topo=topo)
-        
-    def _init_topo_attr(self, topo):
-        super()._init_topo_attr(topo)
-        self.ues = topo.ues.copy()
-        
-    def create_shapes(self, topo=None, hull='convex'):
-        if (self.topo is None) and (topo is None):
-            raise RuntimeError(f'topo must be specified at instanciation or in this call.')
-        
-        if self.topo is None:
-            self._init_topo_attr(topo)
+    @property
+    def ues(self):
+        return self.topo.ues
+    
+    @override
+    @classmethod
+    def _create_site_shapes(cls, topo):
+        return None
+    
+    @override
+    @classmethod
+    def _shape_radius_scale(cls, site_shapes, cell_shapes):
+        return None
+
+
+class ConvexGeom(EmpiricalGeom):
+    @override
+    @classmethod
+    def _create_cell_shapes(cls, topo, site_shapes):
+        cell_shapes = topo.ues.merge(topo.cells.drop(['geometry'], axis=1), on='cell_id')
+        cell_shapes['geometry'] = topo.ues.geometry.convex_hull
             
-        cell_shapes = self.ues.merge(self.cells.drop(['geometry'], axis=1), on='cell_id')
-        if hull == 'convex':
-            cell_shapes['geometry'] = self.ues.geometry.convex_hull
-        if hull == 'concave':
-            cell_shapes['geometry'] = concave_hull(self.ues.geometry, ratio=0)
-        self.cell_shapes = cell_shapes
-        return self
+        return cell_shapes
+
+
+class ConcaveGeom(EmpiricalGeom):
+    @override
+    @classmethod
+    def _create_cell_shapes(cls, topo, site_shapes):
+        cell_shapes = topo.ues.merge(topo.cells.drop(['geometry'], axis=1), on='cell_id')
+        cell_shapes['geometry'] = concave_hull(topo.ues.geometry, ratio=0)
+            
+        return cell_shapes
     
 
 class DistGen:
