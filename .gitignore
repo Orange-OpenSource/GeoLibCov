@@ -12,4 +12,4 @@ DataCov.egg-info/*
 **/__pycache__/*
 **/.ipynb_checkpoints/*
 .reuse/*
-**/**.svg
+notebooks/**.svg
