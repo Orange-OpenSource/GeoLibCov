@@ -305,6 +305,7 @@ class RevRMa(AbstractRev):
         
         # with RMa, PL function is in the form Alog(x) + Bx + C
         # we transform it to be in a form (PL-K)/B = A/Blog(x) + x
+        # 
         K = 20*np.log10(40*np.pi*f/3) - 0.44*self.h**1.72
         A = 20 + 0.03*self.h**1.72
         B = 0.002*np.log10(self.h)
@@ -342,7 +343,6 @@ class RevRMa(AbstractRev):
         self.data.loc[self.data['dist1'] > d_bp, 'dist_los'] = d2
 
     def set_dist_nlos_prime(self):
-        #context = 'urban'
         pl = self.mapl.mapl
         f = self.frequency * 1e-3
         
