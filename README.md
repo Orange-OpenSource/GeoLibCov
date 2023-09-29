@@ -1,7 +1,7 @@
-DataCov
-======
+GeoLibCov: Geographic Library for Cell Coverage Modelling and Topography Generation 
+========================================================================
 
-__DataCov__ is a library for modelling the coverage of radio cells with simple geometries. It provides the following features:
+__GeoLibCov__ is a library for modelling the coverage of radio cells with simple geometries. It provides the following features:
 
 * computation of cells limit radius based on budget link calculations.
 * Voronoi and Circular coverage modelling and evaluation
@@ -16,7 +16,7 @@ __DataCov__ is a library for modelling the coverage of radio cells with simple g
 Clone the project from GitLab:
 
 ```
-$ git clone https://gitlab.tech.orange/danny.qiu/datacov.git
+$ git clone https://github.com/qiuda22/GeoLibCov.git
 ```
 
 In the project directory, install the package in development mode:
