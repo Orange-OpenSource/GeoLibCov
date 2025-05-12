@@ -63,5 +63,5 @@ This code is released under the BSD 3-Clause "New" or "Revised" License. See the
 
 ## Contact
 
-* [danny.qiu@orange.com](mailto:danny.qiu@@orange.com)
+* [dannyfrance@gmail.com](mailto:dannyfrance@gmail.com)
 * [alassane.samba@orange.com](mailto:alassane.samba@@orange.com)
